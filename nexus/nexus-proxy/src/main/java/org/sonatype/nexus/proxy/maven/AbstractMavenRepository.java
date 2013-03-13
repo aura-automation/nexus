@@ -18,6 +18,8 @@ import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.SUFFIX_MD5
 import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.SUFFIX_SHA1;
 import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.doRetrieveMD5;
 import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.doRetrieveSHA1;
+import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.doStoreSHA1;
+import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.doStoreMD5;
 import static org.sonatype.nexus.proxy.maven.ChecksumContentValidator.newHashItem;
 
 import java.io.InputStream;
@@ -40,6 +42,7 @@ import org.sonatype.nexus.proxy.events.RepositoryEventEvictUnusedItems;
 import org.sonatype.nexus.proxy.events.RepositoryEventRecreateMavenMetadata;
 import org.sonatype.nexus.proxy.item.AbstractStorageItem;
 import org.sonatype.nexus.proxy.item.RepositoryItemUid;
+import org.sonatype.nexus.proxy.item.StorageFileItem;
 import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.maven.EvictUnusedMavenItemsWalkerProcessor.EvictUnusedMavenItemsWalkerFilter;
 import org.sonatype.nexus.proxy.maven.packaging.ArtifactPackagingMapper;
@@ -439,9 +442,38 @@ public abstract class AbstractMavenRepository
     public void storeItem( boolean fromTask, StorageItem item )
         throws UnsupportedStorageOperationException, IllegalOperationException, StorageException
     {
-        if ( shouldServeByPolicies( new ResourceStoreRequest( item ) ) )
+        final ResourceStoreRequest request = new ResourceStoreRequest( item ); // this is local only request
+        if ( shouldServeByPolicies( request ) )
         {
-            super.storeItem( fromTask, item );
+            if ( getRepositoryKind().isFacetAvailable( ProxyRepository.class ) && item instanceof StorageFileItem
+                && !item.getPath().startsWith( "/." ) )
+            {
+                try
+                {
+                    if ( item.getPath().endsWith( SUFFIX_SHA1 ) )
+                    {
+                        doStoreSHA1( this, doRetrieveArtifactItem( request, SUFFIX_SHA1 ), (StorageFileItem) item );
+                    }
+                    else if ( item.getPath().endsWith( SUFFIX_MD5 ) )
+                    {
+                        doStoreMD5( this, doRetrieveArtifactItem( request, SUFFIX_MD5 ), (StorageFileItem) item );
+                    }
+                    else
+                    {
+                        super.storeItem( fromTask, item );
+                    }
+                }
+                catch ( ItemNotFoundException e )
+                {
+                    // ignore storeItem request
+                    // this is a maven2 proxy repository, it is requested to store .sha1/.md5 file
+                    // and not there is not corresponding artifact
+                }
+            }
+            else
+            {
+                super.storeItem( fromTask, item );
+            }
         }
         else
         {

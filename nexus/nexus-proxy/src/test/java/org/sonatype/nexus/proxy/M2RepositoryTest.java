@@ -42,6 +42,7 @@ import org.sonatype.nexus.proxy.item.StorageFileItem;
 import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.item.StringContentLocator;
 import org.sonatype.nexus.proxy.maven.ArtifactStoreRequest;
+import org.sonatype.nexus.proxy.maven.ChecksumContentValidator;
 import org.sonatype.nexus.proxy.maven.MUtils;
 import org.sonatype.nexus.proxy.maven.MavenProxyRepository;
 import org.sonatype.nexus.proxy.maven.RepositoryPolicy;
@@ -797,7 +798,7 @@ public class M2RepositoryTest
     // NEXUS-4218 END
 
     @Test
-    public void testNEXUS5418_itemWithChecksums()
+    public void testNEXUS5418_retrieveItemWithChecksums()
         throws Exception
     {
         final M2Repository repository = (M2Repository) getResourceStore();
@@ -866,6 +867,41 @@ public class M2RepositoryTest
         Assert.assertNotNull( md5 );
         String md5str = MUtils.readDigestFromFileItem( (StorageFileItem) md5 );
         Assert.assertEquals( item.getRepositoryItemAttributes().get( StorageFileItem.DIGEST_MD5_KEY ), md5str );
+        Assert.assertEquals( item.getModified(), md5.getModified() );
+        Assert.assertEquals( 32, md5.getLength() );
+    }
+
+    @Test
+    public void testNEXUS5418_storeItemWithChecksums()
+        throws Exception
+    {
+        final M2Repository repository = (M2Repository) getResourceStore();
+
+        Assert.assertTrue( repository.getRepositoryKind().isFacetAvailable( ProxyRepository.class ) );
+
+        String sha1str = "0123456789012345678901234567890123456789";
+        String md5str = "01234567012345670123456701234567";
+
+        StorageItem item = repository.retrieveItem( new ResourceStoreRequest( "/spoof/simple.txt" ) );
+
+        repository.storeItem( false, new DefaultStorageFileItem( repository, item.getPath() + ".sha1", true, true,
+                                                                 new StringContentLocator( sha1str ) ) );
+        repository.storeItem( false, new DefaultStorageFileItem( repository, item.getPath() + ".md5", true, true,
+                                                                 new StringContentLocator( md5str ) ) );
+
+        // reread the item to refresh attributes map
+        item = repository.retrieveItem( new ResourceStoreRequest( "/spoof/simple.txt" ) );
+
+        StorageFileItem sha1 =
+            (StorageFileItem) repository.retrieveItem( new ResourceStoreRequest( "/spoof/simple.txt.sha1" ) );
+        Assert.assertEquals( item.getRepositoryItemAttributes().get( ChecksumContentValidator.ATTR_REMOTE_SHA1 ),
+                             sha1str );
+        Assert.assertEquals( item.getModified(), sha1.getModified() );
+        Assert.assertEquals( 40, sha1.getLength() );
+
+        StorageFileItem md5 =
+            (StorageFileItem) repository.retrieveItem( new ResourceStoreRequest( "/spoof/simple.txt.md5" ) );
+        Assert.assertEquals( item.getRepositoryItemAttributes().get( ChecksumContentValidator.ATTR_REMOTE_MD5 ), md5str );
         Assert.assertEquals( item.getModified(), md5.getModified() );
         Assert.assertEquals( 32, md5.getLength() );
     }

@@ -232,24 +232,7 @@ public class ChecksumContentValidator
                     // either expire the artifact or request the hash asExpired to retry
                 }
 
-                itemUid.getLock().lock( Action.update );
-                try
-                {
-                    if ( hash != null )
-                    {
-                        attributes.put( attrname, hash );
-                    }
-                    else
-                    {
-                        attributes.put( noattrname, Boolean.toString( true ) );
-                    }
-
-                    proxy.getAttributesHandler().storeAttributes( artifact );
-                }
-                finally
-                {
-                    itemUid.getLock().unlock();
-                }
+                doStoreChechsumItem( proxy, artifact, attrname, noattrname, hash );
             }
 
             if ( hash != null )
@@ -264,6 +247,59 @@ public class ChecksumContentValidator
         catch ( IOException e )
         {
             throw new LocalStorageException( e );
+        }
+        finally
+        {
+            itemUid.getLock().unlock();
+        }
+    }
+
+    public static void doStoreSHA1( ProxyRepository proxy, StorageItem artifact, StorageFileItem hash )
+        throws LocalStorageException
+    {
+        try
+        {
+            doStoreChechsumItem( proxy, artifact, ATTR_REMOTE_SHA1, ATTR_NO_REMOTE_SHA1,
+                                 MUtils.readDigestFromFileItem( hash ) );
+        }
+        catch ( IOException e )
+        {
+            throw new LocalStorageException( e );
+        }
+    }
+
+    public static void doStoreMD5( ProxyRepository proxy, StorageItem artifact, StorageFileItem hash )
+        throws LocalStorageException
+    {
+        try
+        {
+            doStoreChechsumItem( proxy, artifact, ATTR_REMOTE_MD5, ATTR_NO_REMOTE_MD5,
+                                 MUtils.readDigestFromFileItem( hash ) );
+        }
+        catch ( IOException e )
+        {
+            throw new LocalStorageException( e );
+        }
+    }
+
+    private static void doStoreChechsumItem( ProxyRepository proxy, StorageItem artifact, String attrname,
+                                             String noattrname, String hash )
+        throws IOException
+    {
+        final RepositoryItemUid itemUid = artifact.getRepositoryItemUid();
+        itemUid.getLock().lock( Action.update );
+        final Attributes attributes = artifact.getRepositoryItemAttributes();
+        try
+        {
+            if ( hash != null )
+            {
+                attributes.put( attrname, hash );
+            }
+            else
+            {
+                attributes.put( noattrname, Boolean.toString( true ) );
+            }
+            proxy.getAttributesHandler().storeAttributes( artifact );
         }
         finally
         {
